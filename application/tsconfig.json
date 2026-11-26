@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "esModuleInterop": true, "skipLibCheck": true, "noUncheckedIndexedAccess": true, "types": ["node"] },
+  "include": ["src", "server", "prisma", "vite.config.ts"]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "playwright-typescript-automation-framework",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scalable UI, API, and integration testing framework using Playwright and TypeScript.",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test tests/ui",
+    "test:api": "playwright test --project=api",
+    "test:integration": "playwright test tests/integration",
+    "test:headed": "playwright test tests/ui --headed",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report reports/html",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.16.5",
+    "eslint": "^9.30.1",
+    "eslint-config-prettier": "^10.1.5",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "dotenv": "^16.6.1"
+  }
+}
