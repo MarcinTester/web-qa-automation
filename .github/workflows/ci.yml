@@ -15,16 +15,16 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -36,19 +36,59 @@ jobs:
         working-directory: application
         run: npm ci
 
-      - name: Prepare application environment and database
+      - name: Generate Prisma client, lint, and build application
+        working-directory: application
+        run: |
+          npx prisma generate
+          npm run lint
+          npm run build
+
+      - name: Install automation dependencies and run static checks
+        working-directory: automation
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+
+      - name: Upload built application
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-dist
+          path: application/dist
+          retention-days: 1
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            application/package-lock.json
+            automation/package-lock.json
+
+      - name: Download built application
+        uses: actions/download-artifact@v7
+        with:
+          name: application-dist
+          path: application/dist
+
+      - name: Prepare application runtime and database
         working-directory: application
         run: |
           cp .env.example .env
+          npm ci
           npx prisma generate
           npx prisma migrate deploy
           npm run db:seed
-
-      - name: Lint and build application
-        working-directory: application
-        run: |
-          npm run lint
-          npm run build
 
       - name: Install automation dependencies
         working-directory: automation
@@ -56,7 +96,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('automation/package-lock.json') }}
@@ -71,12 +111,6 @@ jobs:
         working-directory: automation
         run: npx playwright install-deps chromium
 
-      - name: Lint and typecheck automation
-        working-directory: automation
-        run: |
-          npm run typecheck
-          npm run lint
-
       - name: Start built application and run Playwright tests
         run: |
           set -e
@@ -84,21 +118,30 @@ jobs:
             echo "::error::E2E_USERNAME and E2E_PASSWORD secrets must be set and non-empty."
             exit 1
           fi
-          (cd application && npm run start) &
+
+          (cd application && npm run start > /tmp/api.log 2>&1) &
           API_PID=$!
-          (cd application && npx vite preview --port 5173 --strictPort) &
+          (cd application && npx vite preview --port 5173 --strictPort > /tmp/web.log 2>&1) &
           WEB_PID=$!
           trap 'kill $API_PID $WEB_PID 2>/dev/null || true' EXIT
 
           for i in $(seq 1 30); do
+            if ! kill -0 $API_PID 2>/dev/null || ! kill -0 $WEB_PID 2>/dev/null; then
+              echo "::error::Application server exited early."
+              cat /tmp/api.log /tmp/web.log || true
+              exit 1
+            fi
             if curl -sf http://localhost:3001/api/products >/dev/null && curl -sf http://localhost:5173/ >/dev/null; then
               break
             fi
             sleep 1
           done
 
-          curl -sf http://localhost:3001/api/products >/dev/null
-          curl -sf http://localhost:5173/ >/dev/null
+          if ! curl -sf http://localhost:3001/api/products >/dev/null || ! curl -sf http://localhost:5173/ >/dev/null; then
+            echo "::error::Timed out waiting for application servers."
+            cat /tmp/api.log /tmp/web.log || true
+            exit 1
+          fi
 
           cd automation
           # Add remaining specs (e.g. navigation-and-cart.spec.ts) once migrated from Sauce Demo to QA Shop.
@@ -110,7 +153,7 @@ jobs:
 
       - name: Upload Playwright report and artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-artifacts
           path: automation/reports/
