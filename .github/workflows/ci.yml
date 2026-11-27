@@ -76,10 +76,9 @@ jobs:
           # Add remaining specs (e.g. navigation-and-cart.spec.ts) once migrated from Sauce Demo to QA Shop.
           npx playwright test tests/ui/login.spec.ts tests/ui/register.spec.ts --project=chromium
         env:
-          TEST_ENV: development
           UI_BASE_URL: http://localhost:5173/
-          E2E_USERNAME: ${{ secrets.E2E_USERNAME || 'alice@qa-shop.local' }}
-          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD || 'Password123!' }}
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
 
       - name: Upload Playwright report and artifacts
         if: always()
@@ -88,4 +87,4 @@ jobs:
           name: playwright-artifacts
           path: automation/reports/
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3
