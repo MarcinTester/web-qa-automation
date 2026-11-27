@@ -18,7 +18,6 @@ test.describe('Login', () => {
     await loginPage.open();
     await loginPage.expectLoaded();
     await loginPage.login(invalidLogin.email, invalidLogin.password);
-
     await loginPage.expectError('Email or password is incorrect.');
   });
 
