@@ -1,0 +1,90 @@
+name: CI Build and Playwright Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            application/package-lock.json
+            automation/package-lock.json
+
+      - name: Install application dependencies
+        working-directory: application
+        run: npm ci
+
+      - name: Prepare application environment and database
+        working-directory: application
+        run: |
+          cp .env.example .env
+          npx prisma generate
+          npx prisma migrate deploy
+          npm run db:seed
+
+      - name: Lint and build application
+        working-directory: application
+        run: |
+          npm run lint
+          npm run build
+
+      - name: Install automation dependencies and Chromium
+        working-directory: automation
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Lint and typecheck automation
+        working-directory: automation
+        run: |
+          npm run typecheck
+          npm run lint
+
+      - name: Start built application and run Playwright tests
+        run: |
+          set -e
+          (cd application && npm run start) &
+          API_PID=$!
+          (cd application && npx vite preview --port 5173 --strictPort) &
+          WEB_PID=$!
+          trap 'kill $API_PID $WEB_PID 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/products >/dev/null && curl -sf http://localhost:5173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -sf http://localhost:3001/api/products >/dev/null
+          curl -sf http://localhost:5173/ >/dev/null
+
+          cd automation
+          # Add remaining specs (e.g. navigation-and-cart.spec.ts) once migrated from Sauce Demo to QA Shop.
+          npx playwright test tests/ui/login.spec.ts tests/ui/register.spec.ts --project=chromium
+        env:
+          UI_BASE_URL: http://localhost:5173/
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+
+      - name: Upload Playwright report and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: automation/reports/
+          if-no-files-found: ignore
+          retention-days: 3
