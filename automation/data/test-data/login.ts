@@ -1,4 +1,4 @@
 export const invalidLogin = {
-  username: 'invalid_user',
+  email: 'invalid.user@qa-shop.local',
   password: 'incorrect_password'
 } as const;
