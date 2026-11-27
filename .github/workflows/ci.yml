@@ -2,8 +2,17 @@ name: CI Build and Playwright Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
@@ -41,11 +50,26 @@ jobs:
           npm run lint
           npm run build
 
-      - name: Install automation dependencies and Chromium
+      - name: Install automation dependencies
         working-directory: automation
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('automation/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: automation
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright Chromium OS dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: automation
+        run: npx playwright install-deps chromium
 
       - name: Lint and typecheck automation
         working-directory: automation
@@ -56,6 +80,10 @@ jobs:
       - name: Start built application and run Playwright tests
         run: |
           set -e
+          if [ -z "${E2E_USERNAME:-}" ] || [ -z "${E2E_PASSWORD:-}" ]; then
+            echo "::error::E2E_USERNAME and E2E_PASSWORD secrets must be set and non-empty."
+            exit 1
+          fi
           (cd application && npm run start) &
           API_PID=$!
           (cd application && npx vite preview --port 5173 --strictPort) &
@@ -74,7 +102,7 @@ jobs:
 
           cd automation
           # Add remaining specs (e.g. navigation-and-cart.spec.ts) once migrated from Sauce Demo to QA Shop.
-          npx playwright test tests/ui/login.spec.ts tests/ui/register.spec.ts --project=chromium
+          npx playwright test tests/ui/login.spec.ts tests/ui/register.spec.ts --project=chromium --project=mobile-chrome
         env:
           UI_BASE_URL: http://localhost:5173/
           E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
