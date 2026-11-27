@@ -26,7 +26,6 @@ test.describe('Login', () => {
     await loginPage.open();
     await loginPage.expectLoaded();
     await loginPage.login('', '');
-
     await loginPage.expectValidationError();
     await homePage.expectLoggedOut();
   });
